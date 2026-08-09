@@ -26,7 +26,7 @@ A Calibre **Get Books** plugin that enables searching and downloading from one o
 
 ## Configuration
 
-1. Go to **Preferences** $\rightarrow$ **Plugins** $\rightarrow$ **Open Calibre Servers**.
+1. Go to **Preferences** > **Plugins** > **Open Calibre Servers**.
 2. Click **Customize Plugin**.
 3. Add your target server addresses using the following format:
 

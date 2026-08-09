@@ -11,9 +11,9 @@ class OpenCalibreStore(StoreBase):
         "through Calibre Get Books."
     )
 
-    author = "jadex"
+    author = "ketzah"
 
-    version = (1, 2, 0)
+    version = (1, 2, 1)
 
     actual_plugin = "{}.store:OpenCalibreStore".format(__name__)
 

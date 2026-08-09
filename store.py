@@ -16,17 +16,16 @@ from .network import OpenCalibreClient
 
 class OpenCalibreStore(StorePlugin):
 
-    name = "Open Calibre Store"
+    name = "Open Calibre Servers"
 
     description = (
-        "Search and download books from "
-        "your Open Calibre Content Servers "
-        "through Calibre Get Books."
+        "Search your configured Open Calibre servers "
+        "from Calibre Get Books."
     )
 
-    author = "jadex"
+    author = "ketzah"
 
-    version = (1, 2, 0)
+    version = (1, 2, 1)
 
     drm_free_only = True
 
@@ -218,9 +217,9 @@ class OpenCalibreStore(StorePlugin):
 
     def open(
         self,
-        parent,
-        detail_item,
-        *args
+        parent=None,
+        detail_item=None,
+        external=False
     ):
 
         """

@@ -13,6 +13,8 @@ Open Calibre servers from inside Calibre.
 - OPDS feed parsing
 - Duplicate result filtering
 - Free book downloads through Calibre
+- Bulk server add/test to customize.
+- Retest existing servers in the list and remove inaccessible ones
 
 ---
 
@@ -103,10 +105,6 @@ metadata.py
 plugin-import-name.txt
 
 README.md
-
-images/
-    icon.png
-    config.png
 
 ---
 

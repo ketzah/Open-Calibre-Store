@@ -8,9 +8,146 @@ Handles communication with Calibre Content Server OPDS feeds.
 """
 
 import json
+import re
+import shlex
 import urllib.request
 import urllib.parse
 import base64
+
+
+# Used whenever a server has no explicit library id(s) configured,
+# which keeps old configs (saved before multi-library support was
+# added) working exactly as before.
+DEFAULT_LIBRARY_ID = "calibre-library"
+
+
+# Field prefixes recognized in a raw search query, mapped to the
+# field name the Calibre Content Server search grammar expects.
+# "keyword(s)"/"tag(s)" all mean the same thing to Calibre: tags.
+_FIELD_ALIASES = {
+    "title": "title",
+    "author": "author",
+    "authors": "author",
+    "keyword": "tags",
+    "keywords": "tags",
+    "tag": "tags",
+    "tags": "tags",
+}
+
+# Matches tokens like `title:foo` or `author:"Jane Doe"` anywhere
+# in a query string.
+_FIELD_TOKEN_RE = re.compile(
+    r'(?P<field>[A-Za-z]+):(?P<value>"[^"]*"|\S+)'
+)
+
+
+def build_search_query(raw_query):
+
+    """
+    Turn what the user typed into a Calibre Content Server search
+    query, restricting *unqualified* text to the title, author and
+    tags fields so it can no longer false-positive match on
+    comments/full text.
+
+    - If the user already used field prefixes we understand
+      (title:, author:/authors:, keyword(s):/tag(s):), those are
+      translated to Calibre's own field names (keywords/tag(s) ->
+      tags) and passed through untouched otherwise.
+    - If there are no recognized field prefixes at all, the whole
+      query is turned into (title:"..." or author:"..." or
+      tags:"...") so it only ever matches those three fields.
+    """
+
+    if isinstance(raw_query, bytes):
+        raw_query = raw_query.decode("utf-8", "replace")
+
+    raw_query = (raw_query or "").strip()
+
+    if not raw_query:
+        return raw_query
+
+    matches = list(
+        _FIELD_TOKEN_RE.finditer(raw_query)
+    )
+
+    recognized = [
+        m for m in matches
+        if m.group("field").lower() in _FIELD_ALIASES
+    ]
+
+    if recognized:
+
+        parts = []
+        cursor = 0
+
+        for m in matches:
+
+            field = m.group("field").lower()
+            value = m.group("value")
+            start, end = m.span()
+
+            # Preserve any free text that appeared between tokens
+            # (e.g. connectors the user typed) as-is.
+            between = raw_query[cursor:start].strip()
+
+            if between:
+                parts.append(between)
+
+            if field in _FIELD_ALIASES:
+                parts.append(
+                    f"{_FIELD_ALIASES[field]}:{value}"
+                )
+            else:
+                parts.append(f"{field}:{value}")
+
+            cursor = end
+
+        trailing = raw_query[cursor:].strip()
+
+        if trailing:
+            parts.append(trailing)
+
+        return " ".join(parts)
+
+    # No field prefixes given: rather than requiring one single field
+    # to contain the *entire* query as one phrase (which fails for a
+    # combined "title + author" search, since no single field holds
+    # both), split into individual words/phrases and require each one
+    # to appear in title, author, or tags - not necessarily the same
+    # field. This mirrors Calibre's normal implicit-AND-of-terms
+    # search behaviour, just scoped away from comments/full text.
+    #
+    # e.g. "bridge to terabithia katherine paterson" becomes:
+    #   (title/author/tags contain "bridge")
+    #   AND (title/author/tags contain "to")
+    #   AND ...
+    #   AND (title/author/tags contain "paterson")
+    # which correctly matches a book whose title supplies some of
+    # those words and whose author supplies the rest.
+
+    try:
+        terms = shlex.split(raw_query)
+    except ValueError:
+        # Unbalanced quotes etc. - fall back to a plain word split
+        # rather than failing the search outright.
+        terms = raw_query.split()
+
+    if not terms:
+        return raw_query
+
+    groups = []
+
+    for term in terms:
+
+        escaped = term.replace('"', '\\"')
+
+        groups.append(
+            f'(title:"{escaped}" '
+            f'or author:"{escaped}" '
+            f'or tags:"{escaped}")'
+        )
+
+    return " ".join(groups)
 
 
 class OpenCalibreClient:
@@ -42,6 +179,22 @@ class OpenCalibreClient:
         self.password = server.get(
             "password"
         )
+
+        #
+        # One server can expose multiple libraries, each with its
+        # own name (Calibre's default is "calibre-library", but
+        # renamed/multi-library setups are common). Older configs
+        # saved before this existed won't have a "libraries" key
+        # at all, so fall back to the historical default.
+        #
+        libraries = server.get(
+            "libraries"
+        )
+
+        if not libraries:
+            libraries = [DEFAULT_LIBRARY_ID]
+
+        self.libraries = libraries
 
 
     def base_url(self):
@@ -112,65 +265,87 @@ class OpenCalibreClient:
     ):
 
         """
-        Search Calibre OPDS server.
+        Search every library configured for this server and
+        return the combined results.
         """
 
-        encoded = urllib.parse.quote(
+        refined_query = build_search_query(
             query
         )
 
-
-        url = (
-            self.base_url()
-            +
-            "/opds/search/"
-            +
-            encoded
-            +
-            "?library_id=calibre-library"
+        encoded = urllib.parse.quote(
+            refined_query
         )
 
+        results = []
 
-        try:
+        for library_id in self.libraries:
 
-            print(
-                "Searching:",
-                url
+            url = (
+                self.base_url()
+                +
+                "/opds/search/"
+                +
+                encoded
+                +
+                "?library_id="
+                +
+                urllib.parse.quote(
+                    library_id
+                )
             )
 
+            try:
 
-            data = self.request(
-                url,
-                timeout
-            )
-
-
-            print(
-                "Response received:",
-                len(data),
-                "bytes"
-            )
+                print(
+                    "Searching:",
+                    url
+                )
 
 
-            return self.parse_response(
-                data
-            )
+                data = self.request(
+                    url,
+                    timeout
+                )
 
 
-        except Exception as err:
+                print(
+                    "Response received:",
+                    len(data),
+                    "bytes"
+                )
 
-            print(
-                "Search failed:",
-                err
-            )
 
-            return []
+                results.extend(
+                    self.parse_response(
+                        data,
+                        library_id
+                    )
+                )
+
+
+            except Exception as err:
+
+                #
+                # One library failing (wrong name, temporarily
+                # unavailable, etc.) shouldn't stop the others
+                # on the same server from being searched.
+                #
+                print(
+                    "Search failed for library",
+                    library_id,
+                    ":",
+                    err
+                )
+
+        return results
 
 
 
     def parse_response(
         self,
-        data
+        data,
+        library_id=DEFAULT_LIBRARY_ID
     ):
 
         """
@@ -213,7 +388,8 @@ class OpenCalibreClient:
 
             return parse_opds(
                 data,
-                self.base_url()
+                self.base_url(),
+                library_id
             )
 
 

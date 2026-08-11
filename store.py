@@ -25,7 +25,7 @@ class OpenCalibreStore(StorePlugin):
 
     author = "ketzah"
 
-    version = (1, 2, 1)
+    version = (1, 2, 3)
 
     drm_free_only = True
 
@@ -38,6 +38,29 @@ class OpenCalibreStore(StorePlugin):
         )
 
         self.config = get_config()
+
+
+
+    def _log_error(self, message):
+
+        """
+        calibre only attaches a working `self.log` to store plugins
+        in some code paths (e.g. it's missing when search() runs on
+        the background download thread), so fall back to plain
+        stdout instead of crashing when it isn't there.
+        """
+
+        log = getattr(self, "log", None)
+
+        if log is not None:
+
+            try:
+                log.error(message)
+                return
+            except Exception:
+                pass
+
+        print(message)
 
 
 
@@ -194,9 +217,10 @@ class OpenCalibreStore(StorePlugin):
 
             except Exception as err:
 
-                self.log.error(
-                    "Open Calibre search failed: %s",
-                    err
+                self._log_error(
+                    "Open Calibre search failed: {}".format(
+                        err
+                    )
                 )
 
 

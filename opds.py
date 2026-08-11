@@ -12,7 +12,7 @@ import re
 ATOM = "{http://www.w3.org/2005/Atom}"
 
 
-def parse_opds(data, base_url=""):
+def parse_opds(data, base_url="", library_id="calibre-library"):
 
     books = []
 
@@ -163,7 +163,9 @@ def parse_opds(data, base_url=""):
                         +
                         book_id
                         +
-                        "&library_id=calibre-library"
+                        "&library_id="
+                        +
+                        library_id
                         +
                         "&panel=book_details"
                     )

@@ -159,8 +159,15 @@ class ConfigWidget(QWidget):
         self.port.setRange(1, 65535)
         self.port.setValue(8080)
 
+        self.library = QLineEdit()
+        self.library.setPlaceholderText(
+            "Library ID(s), comma separated "
+            "(default: calibre-library)"
+        )
+
         form.addWidget(self.host)
         form.addWidget(self.port)
+        form.addWidget(self.library)
 
         layout.addLayout(form)
 
@@ -187,7 +194,10 @@ class ConfigWidget(QWidget):
                 "Bulk Add Servers "
                 "(one per line, e.g. 192.168.1.10:8080 "
                 "or https://calibre.example.com:8081 "
-                "\u2014 lines starting with # are ignored):"
+                "\u2014 lines starting with # are ignored. "
+                "Append |LibraryID,LibraryID to set one or "
+                "more library IDs for that server; default "
+                "is calibre-library):"
             )
         )
 
@@ -195,7 +205,8 @@ class ConfigWidget(QWidget):
         self.bulk_input.setPlaceholderText(
             "192.168.1.10:8080\n"
             "192.168.1.11\n"
-            "https://calibre.example.com:8081"
+            "https://calibre.example.com:8081\n"
+            "192.168.1.12:8080|Fiction,Nonfiction"
         )
         self.bulk_input.setMaximumHeight(100)
         layout.addWidget(self.bulk_input)
@@ -236,9 +247,34 @@ class ConfigWidget(QWidget):
     # Display helpers
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _parse_library_ids(text):
+
+        """
+        Turn "Fiction, Nonfiction" into ["Fiction", "Nonfiction"].
+        Returns [] if nothing usable was entered, which callers
+        should treat as "use Calibre's default library".
+        """
+
+        if not text:
+            return []
+
+        return [
+            part.strip()
+            for part in text.split(",")
+            if part.strip()
+        ]
+
     def display_name(self, server):
 
-        return f"{server.get('host')}:{server.get('port')}"
+        name = f"{server.get('host')}:{server.get('port')}"
+
+        libraries = server.get("libraries")
+
+        if libraries:
+            name += "  [" + ", ".join(libraries) + "]"
+
+        return name
 
     def _status_suffix(self, server):
 
@@ -367,12 +403,16 @@ class ConfigWidget(QWidget):
             "host": host,
             "port": self.port.value(),
             "enabled": True,
-            "https": False
+            "https": False,
+            "libraries": self._parse_library_ids(
+                self.library.text()
+            )
         }
 
         self.servers.append(server)
         self.refresh_list()
         self.host.clear()
+        self.library.clear()
 
     def test_server(self):
 
@@ -587,6 +627,14 @@ class ConfigWidget(QWidget):
         if not line or line.startswith("#"):
             return None
 
+        # Optional trailing "|LibraryID,LibraryID" segment.
+        libraries = []
+
+        if "|" in line:
+            line, libraries_text = line.split("|", 1)
+            line = line.strip()
+            libraries = self._parse_library_ids(libraries_text)
+
         https = False
 
         if "://" in line:
@@ -620,7 +668,8 @@ class ConfigWidget(QWidget):
             "host": host,
             "port": port,
             "https": https,
-            "enabled": True
+            "enabled": True,
+            "libraries": libraries
         }
 
     def bulk_add_and_test(self):

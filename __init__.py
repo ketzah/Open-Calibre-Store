@@ -13,7 +13,7 @@ class OpenCalibreStore(StoreBase):
 
     author = "ketzah"
 
-    version = (1, 2, 3)
+    version = (1, 2, 4)
 
     actual_plugin = "{}.store:OpenCalibreStore".format(__name__)
 

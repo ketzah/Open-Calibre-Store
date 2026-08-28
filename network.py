@@ -9,7 +9,6 @@ Handles communication with Calibre Content Server OPDS feeds.
 
 import json
 import re
-import shlex
 import urllib.request
 import urllib.parse
 import base64
@@ -58,10 +57,17 @@ def build_search_query(raw_query):
       tags:"...") so it only ever matches those three fields.
     """
 
+    # Calibre 9.14 can provide the store search query as bytes.
+    # The query parser below uses string regexes, so normalize it to
+    # text before doing any regex or string operations.
     if isinstance(raw_query, bytes):
-        raw_query = raw_query.decode("utf-8", "replace")
+        raw_query = raw_query.decode("utf-8", errors="replace")
+    elif raw_query is None:
+        raw_query = ""
+    else:
+        raw_query = str(raw_query)
 
-    raw_query = (raw_query or "").strip()
+    raw_query = raw_query.strip()
 
     if not raw_query:
         return raw_query
@@ -109,45 +115,16 @@ def build_search_query(raw_query):
 
         return " ".join(parts)
 
-    # No field prefixes given: rather than requiring one single field
-    # to contain the *entire* query as one phrase (which fails for a
-    # combined "title + author" search, since no single field holds
-    # both), split into individual words/phrases and require each one
-    # to appear in title, author, or tags - not necessarily the same
-    # field. This mirrors Calibre's normal implicit-AND-of-terms
-    # search behaviour, just scoped away from comments/full text.
-    #
-    # e.g. "bridge to terabithia katherine paterson" becomes:
-    #   (title/author/tags contain "bridge")
-    #   AND (title/author/tags contain "to")
-    #   AND ...
-    #   AND (title/author/tags contain "paterson")
-    # which correctly matches a book whose title supplies some of
-    # those words and whose author supplies the rest.
+    # No field prefixes given: restrict the free-text query to
+    # title/author/tags instead of letting Calibre fall back to a
+    # full-text search that also matches comments.
+    escaped = raw_query.replace('"', '\\"')
 
-    try:
-        terms = shlex.split(raw_query)
-    except ValueError:
-        # Unbalanced quotes etc. - fall back to a plain word split
-        # rather than failing the search outright.
-        terms = raw_query.split()
-
-    if not terms:
-        return raw_query
-
-    groups = []
-
-    for term in terms:
-
-        escaped = term.replace('"', '\\"')
-
-        groups.append(
-            f'(title:"{escaped}" '
-            f'or author:"{escaped}" '
-            f'or tags:"{escaped}")'
-        )
-
-    return " ".join(groups)
+    return (
+        f'(title:"{escaped}" '
+        f'or author:"{escaped}" '
+        f'or tags:"{escaped}")'
+    )
 
 
 class OpenCalibreClient:

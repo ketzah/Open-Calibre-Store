@@ -25,7 +25,7 @@ class OpenCalibreStore(StorePlugin):
 
     author = "ketzah"
 
-    version = (1, 2, 3)
+    version = (1, 2, 4)
 
     drm_free_only = True
 
@@ -38,29 +38,6 @@ class OpenCalibreStore(StorePlugin):
         )
 
         self.config = get_config()
-
-
-
-    def _log_error(self, message):
-
-        """
-        calibre only attaches a working `self.log` to store plugins
-        in some code paths (e.g. it's missing when search() runs on
-        the background download thread), so fall back to plain
-        stdout instead of crashing when it isn't there.
-        """
-
-        log = getattr(self, "log", None)
-
-        if log is not None:
-
-            try:
-                log.error(message)
-                return
-            except Exception:
-                pass
-
-        print(message)
 
 
 
@@ -217,10 +194,12 @@ class OpenCalibreStore(StorePlugin):
 
             except Exception as err:
 
-                self._log_error(
-                    "Open Calibre search failed: {}".format(
-                        err
-                    )
+                # StorePlugin does not provide a .log attribute in
+                # all Calibre 9.x versions.  Do not let error
+                # reporting itself abort the search worker.
+                print(
+                    "Open Calibre search failed:",
+                    repr(err)
                 )
 
 
@@ -241,29 +220,53 @@ class OpenCalibreStore(StorePlugin):
 
     def open(
         self,
+        gui=None,
         parent=None,
         detail_item=None,
         external=False
     ):
 
         """
-        Open the book detail page when
-        the user selects 'Show in Store'.
+        Open the store or a specific book detail page.
+
+        Calibre 9.14 expects StorePlugin.open() to receive the
+        GUI object as its first argument.  For an individual search
+        result, use Calibre's WebStoreDialog so the detail URL is
+        opened inside the Get Books store when external browsing is
+        not requested.
         """
 
         if not detail_item:
             return
 
+        from qt.core import QUrl
+        from calibre.gui2 import open_url
+        from calibre.gui2.store.web_store_dialog import WebStoreDialog
 
-        from qt.core import (
-            QDesktopServices,
-            QUrl
-        )
+        # Open in the system browser when requested by Calibre or by
+        # the plugin's configuration.
+        if external or self.config.get("open_external", False):
+            open_url(QUrl(detail_item))
+            return
+
+        # The detail URL for an Open Calibre server is a fragment URL
+        # such as:
+        #   http://host:port/#book_id=123&library_id=...&panel=book_details
+        # WebStoreDialog needs the server URL as its base URL and the
+        # complete detail URL as the target.
+        base_url = detail_item.split("#", 1)[0]
+
+        if not base_url:
+            base_url = detail_item
 
         print("Opening store URL:", detail_item)
-        
-        QDesktopServices.openUrl(
-            QUrl(
-                detail_item
-            )
+
+        d = WebStoreDialog(
+            self.gui,
+            base_url,
+            parent,
+            detail_item
         )
+        d.setWindowTitle(self.name)
+        d.set_tags(self.config.get("tags", ""))
+        d.exec()

@@ -17,7 +17,7 @@ class OpenCalibreStore(StoreBase):
 
     actual_plugin = "{}.store:OpenCalibreStore".format(__name__)
 
-    minimum_calibre_version = (9, 0, 0)
+    minimum_calibre_version = (9, 14, 0)
 
     def is_customizable(self):
         return True

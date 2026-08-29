@@ -25,7 +25,7 @@ class OpenCalibreStore(StorePlugin):
 
     author = "ketzah"
 
-    version = (1, 2, 4)
+    version = (1, 2, 5)
 
     drm_free_only = True
 

@@ -115,16 +115,23 @@ def build_search_query(raw_query):
 
         return " ".join(parts)
 
-    # No field prefixes given: restrict the free-text query to
-    # title/author/tags instead of letting Calibre fall back to a
-    # full-text search that also matches comments.
-    escaped = raw_query.replace('"', '\\"')
-
-    return (
-        f'(title:"{escaped}" '
-        f'or author:"{escaped}" '
-        f'or tags:"{escaped}")'
-    )
+    # No field prefixes given: pass the query through unchanged.
+    #
+    # Calibre's search grammar treats adjacent terms as AND, so a
+    # query such as:
+    #
+    #     dune frank herbert
+    #
+    # correctly means that all three terms must be present somewhere
+    # in the book metadata.  The previous implementation wrapped the
+    # entire query in exact-phrase field searches, producing:
+    #
+    #     (title:"dune frank herbert" or author:"dune frank herbert" ...)
+    #
+    # which does not match a book titled "Dune" by "Frank Herbert".
+    # It also caused the Content Server to return HTTP 404 when no
+    # books matched that exact phrase.
+    return raw_query
 
 
 class OpenCalibreClient:
